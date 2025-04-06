@@ -9,7 +9,16 @@ namespace DiscordBotSlashCommands
 {
     public class TestCommands : ApplicationCommandModule
     {
+        private readonly ulong _allowedEditorId = 1358351354044878969;
+
         private readonly TestManager _testManager = new();
+        private readonly EmbedManager _embedManager = new();
+        private readonly RoleManager _roleManager;
+
+        public TestCommands()
+        {
+            _roleManager = new RoleManager(_allowedEditorId);
+        }
 
         [SlashCommand("viewtests", "View all tests for week.")]
         public async Task ViewAllTests(InteractionContext ctx)
@@ -49,12 +58,18 @@ namespace DiscordBotSlashCommands
 
         [SlashCommand("addtest", "Add a new test to the database")]
         public async Task AddTestCommand(InteractionContext ctx,
-       [Option("name", "The name of the test")] string name,
-       [Option("subject", "The subject of the test (Programming, Robotics, etc.)")] Subjects subject,
-       [Option("type", "The type of the test (ControlTest, ClassTest, etc.)")] TypesOfTest type,
-       [Option("day", "The day of the week for the test (Monday, Tuesday, etc.)")] DaysOfWeek day,
-       [Option("description", "A short description of the test (optional)")] string description = "")
+    [Option("name", "The name of the test")] string name,
+    [Option("subject", "The subject of the test (Programming, Robotics, etc.)")] Subjects subject,
+    [Option("type", "The type of the test (ControlTest, ClassTest, etc.)")] TypesOfTest type,
+    [Option("day", "The day of the week for the test (Monday, Tuesday, etc.)")] DaysOfWeek day,
+    [Option("description", "A short description of the test")] string description = "")
         {
+
+            if (_roleManager.DoesUserHaveEditorRole(ctx.Member))
+            {
+                await ctx.CreateResponseAsync(embed: _embedManager.GenerateErrorEmbed("No permissions", "User does not have role that is assigned to editors."));
+                return;
+            }
 
             var newTest = new Test
             {
@@ -79,10 +94,9 @@ namespace DiscordBotSlashCommands
                 };
 
                 embed.Footer.Text = "Developed by georgi170109";
-
-
                 embed.AddField("Type of Test", type.ToString(), true);
                 embed.AddField("Day of the Week", day.ToString(), true);
+
                 if (!string.IsNullOrEmpty(description))
                 {
                     embed.AddField("Description", description, false);
@@ -92,9 +106,10 @@ namespace DiscordBotSlashCommands
             }
             catch (Exception ex)
             {
-                await ctx.CreateResponseAsync($"Failed to add the test. Error: {ex.Message}");
+                await ctx.CreateResponseAsync(embed: _embedManager.GenerateErrorEmbed("Failed to add test.", $"Failed to add the test. Error: {ex.Message}"));
             }
         }
+
 
         [SlashCommand("viewtestsbyday", "View tests for a specific day of the week")]
         public async Task ViewTestsForDayCommand(InteractionContext ctx, [Option("day", "Choose a day of the week")] DaysOfWeek dayOfWeek)
@@ -166,7 +181,7 @@ namespace DiscordBotSlashCommands
 
             if (test == null)
             {
-                await ctx.CreateResponseAsync("Test not found.");
+                await ctx.CreateResponseAsync(embed: _embedManager.GenerateErrorEmbed("Failed to view test details.", $"Test was not found for given id."));
                 return;
             }
 
@@ -216,11 +231,18 @@ namespace DiscordBotSlashCommands
         [SlashCommand("deletetest", "Delete a specific test from the database")]
         public async Task DeleteTestCommand(InteractionContext ctx, [Option("test-id", "The ID of the test to delete")] long testId)
         {
+
+            if (_roleManager.DoesUserHaveEditorRole(ctx.Member))
+            {
+                await ctx.CreateResponseAsync(embed: _embedManager.GenerateErrorEmbed("No permissions", "User does not have role that is assigned to editors."));
+                return;
+            }
+
             Test test = _testManager.GetTestById((int)testId);
 
             if (test == null)
             {
-                await ctx.CreateResponseAsync("Test not found.");
+                await ctx.CreateResponseAsync(embed: _embedManager.GenerateErrorEmbed("Failed to delete test.", $"Test with given id was not found."));
                 return;
             }
 
@@ -256,6 +278,7 @@ namespace DiscordBotSlashCommands
 
 
                 };
+                await ctx.CreateResponseAsync(embed: _embedManager.GenerateErrorEmbed("Error deleting test.", $"An error occurred while trying to delete the test: {ex.Message}"));
 
                 await ctx.CreateResponseAsync(embed: embed.Build());
             }
@@ -266,20 +289,9 @@ namespace DiscordBotSlashCommands
         {
             var member = await ctx.Guild.GetMemberAsync(ctx.User.Id);
 
-            if (member == null || !member.Permissions.HasPermission(Permissions.Administrator))
+            if (member == null || _roleManager.DoesUserHaveAdminPerms(ctx.Member))
             {
-                var embed = new DiscordEmbedBuilder
-                {
-                    Title = "Error Deleting Tests",
-                    Description = $"An error occurred while trying to delete all tests: You do nto have sufficient perms to run this command.",
-                    Color = DiscordColor.Red,
-                    Footer = new()
-                    {
-                        Text = "Developed by georgi170109"
-                    }
-                };
-                await ctx.CreateResponseAsync(embed: embed.Build());
-
+                await ctx.CreateResponseAsync(embed: _embedManager.GenerateErrorEmbed("Failed to delete all tests.", $"User does not have admin permissions."));
             }
 
 
@@ -302,18 +314,7 @@ namespace DiscordBotSlashCommands
             }
             catch (Exception ex)
             {
-                var embed = new DiscordEmbedBuilder
-                {
-                    Title = "Error Deleting Tests",
-                    Description = $"An error occurred while trying to delete all tests: {ex.Message}",
-                    Color = DiscordColor.Red,
-                    Footer = new()
-                    {
-                        Text = "Developed by georgi170109"
-                    }
-                };
-
-                await ctx.CreateResponseAsync(embed: embed.Build());
+                await ctx.CreateResponseAsync(embed: _embedManager.GenerateErrorEmbed("Failed to delete tests.", $"An error occurred while trying to delete all tests: {ex.Message}"));
             }
         }
 
@@ -322,11 +323,18 @@ namespace DiscordBotSlashCommands
                                      [Option("test-id", "The ID of the test to add the document to")] long testId,
                                      [Option("document-link", "The link to the document")] string documentLink)
         {
+
+            if (_roleManager.DoesUserHaveEditorRole(ctx.Member))
+            {
+                await ctx.CreateResponseAsync(embed: _embedManager.GenerateErrorEmbed("No permissions", "User does not have role that is assigned to editors."));
+                return;
+            }
+
             Test test = _testManager.GetTestById((int)testId);
 
             if (test == null)
             {
-                await ctx.CreateResponseAsync("Test not found.");
+                await ctx.CreateResponseAsync(embed: _embedManager.GenerateErrorEmbed("Test was not found.", "Test for given id was not found."));
                 return;
             }
 
@@ -356,18 +364,7 @@ namespace DiscordBotSlashCommands
             }
             catch (Exception ex)
             {
-                var embed = new DiscordEmbedBuilder
-                {
-                    Title = "Error Adding Document",
-                    Description = $"An error occurred while adding the document: {ex.Message}",
-                    Color = DiscordColor.Red,
-                    Footer = new()
-                    {
-                        Text = "Developed by georgi170109"
-                    }
-                };
-
-                await ctx.CreateResponseAsync(embed: embed.Build());
+                await ctx.CreateResponseAsync(embed: _embedManager.GenerateErrorEmbed("Error Adding Document", $"An error occurred while adding the document: {ex.Message}"));
             }
         }
 
@@ -377,11 +374,18 @@ namespace DiscordBotSlashCommands
                                         [Option("example-link", "The link to the example test")] string exampleTestLink,
                                         [Option("scheduled-at", "The scheduled date and time for the example test (in Discord timestamp format)")] string scheduledAt)
         {
+
+            if (_roleManager.DoesUserHaveEditorRole(ctx.Member))
+            {
+                await ctx.CreateResponseAsync(embed: _embedManager.GenerateErrorEmbed("No permissions", "User does not have role that is assigned to editors."));
+                return;
+            }
+
             Test test = _testManager.GetTestById((int)testId);
 
             if (test == null)
             {
-                await ctx.CreateResponseAsync("Test not found.");
+                await ctx.CreateResponseAsync(embed: _embedManager.GenerateErrorEmbed("Test was not found.", "Test for given id was not found."));
                 return;
             }
 
@@ -417,23 +421,12 @@ namespace DiscordBotSlashCommands
                 }
                 else
                 {
-                    await ctx.CreateResponseAsync("Invalid timestamp format. Please provide a valid Discord timestamp.");
+                    await ctx.CreateResponseAsync(embed: _embedManager.GenerateErrorEmbed("Timestamp error.", "Invalid timestamp format. Please provide a valid Discord timestamp. (Make sure you are using the fullest date possible so that the unix stamp ends with :F>)"));
                 }
             }
             catch (Exception ex)
             {
-                var embed = new DiscordEmbedBuilder
-                {
-                    Title = "Error Adding Example Test",
-                    Description = $"An error occurred while adding the example test: {ex.Message}",
-                    Color = DiscordColor.Red,
-                    Footer = new()
-                    {
-                        Text = "Developed by georgi170109"
-                    }
-                };
-
-                await ctx.CreateResponseAsync(embed: embed.Build());
+                await ctx.CreateResponseAsync(embed: _embedManager.GenerateErrorEmbed("Error Adding Example Test", $"An error occurred while adding example test: {ex.Message}"));
             }
         }
 
@@ -456,12 +449,15 @@ namespace DiscordBotSlashCommands
                     }
                 };
 
+                await ctx.CreateResponseAsync(embed: _embedManager.GenerateErrorEmbed("Test was not found.", $"An error occurred while viewing documents: Test was not found."));
+
+
                 await ctx.CreateResponseAsync(embed: errorembed.Build()); return;
             }
 
             if (test.Documents == null || !test.Documents.Any())
             {
-                await ctx.CreateResponseAsync("There are no documents associated with this test.");
+                await ctx.CreateResponseAsync(embed: _embedManager.GenerateErrorEmbed("No documents.", "No documents were found for given test."));
                 return;
             }
 
@@ -504,12 +500,15 @@ namespace DiscordBotSlashCommands
                     }
                 };
 
+                await ctx.CreateResponseAsync(embed: _embedManager.GenerateErrorEmbed("Test was not found.", "Test for given testid was not found."));
+
+
                 await ctx.CreateResponseAsync(embed: errorembed.Build()); return;
             }
 
             if (test.ExampleTests == null || !test.ExampleTests.Any())
             {
-                await ctx.CreateResponseAsync("There are no example tests associated with this test.");
+                await ctx.CreateResponseAsync(embed: _embedManager.GenerateErrorEmbed("No example tests.", "No example tests were found for given test."));
                 return;
             }
 

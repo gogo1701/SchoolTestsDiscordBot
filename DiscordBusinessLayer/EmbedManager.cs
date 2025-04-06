@@ -3,9 +3,9 @@ using DSharpPlus.Entities;
 
 namespace DiscordBusinessLayer
 {
-    class EmbedManager
+    public class EmbedManager
     {
-        DiscordEmbed generateErrorEmbed(string title, string description)
+        public DiscordEmbed GenerateErrorEmbed(string title, string description)
         {
             var embed = new DiscordEmbedBuilder
             {
@@ -18,7 +18,7 @@ namespace DiscordBusinessLayer
                 }
             };
 
-            return embed;
+            return embed.Build();
         }
     }
 }
